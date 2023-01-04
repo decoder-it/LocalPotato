@@ -415,13 +415,6 @@ BOOL DoAuthenticatedGenFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wch
 
     char fileid[16];
     memcpy(fileid, recBuffer + 132, 16);
-    unsigned char write_data[] = \
-        "\x31\x00\x70\x00\x15\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x12\x00\x00\x00\x0a\x00\x00\x00\x05\x00\x00\x00\x0a\x00\x00\x00" \
-        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x57\x65\x20\x6c\x6f\x76\x65\x20\x70\x6f\x74\x61\x74\x6f\x65\x73" \
-        "\x21\x20\x20\x0d\x0a"
-        ;
     
     u_write_request write_req;
     
@@ -444,7 +437,7 @@ BOOL DoAuthenticatedGenFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wch
     unsigned int* writeResponseStatus;
     write_req.wr.FileOffset = 0;
 
-    memcpy(write_data + 16, fileid, 16);
+    //memcpy(write_data + 16, fileid, 16);
     memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
     memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
     memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
