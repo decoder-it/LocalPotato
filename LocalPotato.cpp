@@ -63,7 +63,9 @@ int wmain(int argc, wchar_t** argv)
 	HANDLE hTread = CreateThread(0, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(SMBAuthenticatedFileWrite), NULL, 0, NULL);
 	HookSSPIForDCOMReflection();
 	PotatoTrigger(clsidStr, comPort, hTread);
-	WaitForSingleObject(hTread, INFINITE);
+	if (WaitForSingleObject(hTread, 3000) == WAIT_TIMEOUT) {
+		printf("[-] The privileged process failed to communicate with our COM Server :(");
+	}
 	return 0;
 }
 
