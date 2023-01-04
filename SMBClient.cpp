@@ -470,11 +470,6 @@ BOOL DoAuthenticatedGenFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wch
         slen.i =sizeof(s2h.buffer) + sizeof(write_req) + nread;
         //printf("mlen=%d %0x %d %d nread%d %d\n", slen.i,slen.i, MessageID, sizeof(write_data2),nread,sizeof(long long));
         memset(netsess, 0, 4);
-       // netsess[0] = mlen.buffer[0];
-       // netsess[1] = mlen.buffer[1];
-        //netsess[3] = slen.buffer[1];
-        //netsess[2] = slen.buffer[0];
-        //netsess[3] = 0x85;
         netsess[3] = slen.buffer[0];
         netsess[2] = slen.buffer[1];
         memset(InBuffer, 0, sizeof(InBuffer));
