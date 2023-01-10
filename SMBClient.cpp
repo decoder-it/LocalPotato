@@ -25,7 +25,7 @@ SOCKET ConnectSocket(const wchar_t* ipAddress, int port);
 BOOL GenClientContext(BYTE* pIn, DWORD cbIn, BYTE* pOut, DWORD* pcbOut, BOOL* pfDone, WCHAR* pszTarget, CredHandle* hCred, struct _SecHandle* hcText);
 int findNTLMBytes(char* bytes, int len);
 BOOL SMBNegoProtocol(SOCKET s, char* recBuffer);
-BOOL SMB2NegoProtocol(SOCKET s);
+BOOL SMB2NegoProtocol(SOCKET s, char* recBuffer);
 
 
 void SMBAuthenticatedFileWrite()
@@ -42,7 +42,6 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     DWORD cbOut = 0;
     DWORD cbIn = 0;
     PBYTE pOutBuf;
-    myint mpid;
     myshort slen;
     CredHandle hCred;
     struct _SecHandle  hcText;
@@ -50,27 +49,13 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
 
 
     SMBNegoProtocol(s, recBuffer);
-
-    unsigned char smb2_nego_protocol[] = \
-        "\x00\x00\x00\x68\xfe\x53\x4d\x42\x40\x00\x01\x00\x00\x00\x00\x00" \
-        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00" \
-        "\x00\x00\x00\x00\x30\x7e\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x00\x00\x00\x00\x24\x00\x02\x00\x01\x00\x00\x00\x01\x00\x00\x00" \
-        "\xb3\x2a\x22\x3f\xcf\x5f\x43\x9c\xbb\x55\x8c\x98\x11\xd2\x5f\x1c" \
-        "\x00\x00\x00\x00\x00\x00\x00\x00\x02\x02\x10\x02\x00";
+    SMB2NegoProtocol(s, recBuffer);
 
     
     usmb2_header s2h;
     usmb2_data s2d;
 
     pOutBuf = (PBYTE)malloc(DEFAULT_BUFLEN);
-
-    int pid = GetCurrentProcessId();
-    mpid.i = pid;
-    myshort datalen;
-
-    memcpy(&smb2_nego_protocol[36], mpid.buffer, 4);
 
     cbOut = DEFAULT_BUFLEN;
 
@@ -85,11 +70,10 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     unsigned char sessid[8];
     int MessageID=2;
 
-    char c = smb2_nego_protocol[3];
-    len = send(s, (char*)smb2_nego_protocol, c + 4, 0);
+    
 
-    len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
-
+    myint mpid;
+    mpid.i = GetCurrentProcessId();
 
     memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
     memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
@@ -106,6 +90,7 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     memcpy(&s2h.smb2_header.SessionID[0], "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
     memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
 
+    myshort datalen;
     datalen.i = cbOut;
     memcpy(&s2d.smb2_data.StructureSize, "\x19\x00", 2);
     memcpy(&s2d.smb2_data.Flags, "\x00", 1);
@@ -120,7 +105,7 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     datalen.i = plen;
     int start = 2;
     slen.i = plen;
-    c = plen;
+    char c = plen;
 
     memset(OutBuffer, 0, sizeof(OutBuffer));
 
@@ -602,6 +587,7 @@ BOOL SMBNegoProtocol(SOCKET s, char* recBuffer) {
     myshort slen;
     int len = 0, pid = 0;
     myshort ms;
+    char c = 0;
 
     unsigned char smb_nego_protocol[] = \
         "\x00\x00\x00\x45\xff\x53\x4d\x42\x72\x00\x00\x00\x00\x18\x01\x48" \
@@ -614,8 +600,32 @@ BOOL SMBNegoProtocol(SOCKET s, char* recBuffer) {
     ms.i = pid;
     memcpy(&smb_nego_protocol[30], ms.buffer, 2);
     memcpy(slen.buffer, &smb_nego_protocol[2], 2);
-    char c = smb_nego_protocol[3];
+    c = smb_nego_protocol[3];
     len = send(s, (char*)smb_nego_protocol, c + 4, 0);
+    len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+    return ret;
+}
+
+BOOL SMB2NegoProtocol(SOCKET s, char* recBuffer) {
+    BOOL ret = TRUE;
+    int len = 0, pid = 0;
+    char c = 0;
+    myint mpid;
+
+    unsigned char smb2_nego_protocol[] = \
+        "\x00\x00\x00\x68\xfe\x53\x4d\x42\x40\x00\x01\x00\x00\x00\x00\x00" \
+        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00" \
+        "\x00\x00\x00\x00\x30\x7e\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
+        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
+        "\x00\x00\x00\x00\x24\x00\x02\x00\x01\x00\x00\x00\x01\x00\x00\x00" \
+        "\xb3\x2a\x22\x3f\xcf\x5f\x43\x9c\xbb\x55\x8c\x98\x11\xd2\x5f\x1c" \
+        "\x00\x00\x00\x00\x00\x00\x00\x00\x02\x02\x10\x02\x00";
+
+    pid = GetCurrentProcessId();
+    mpid.i = pid;
+    memcpy(&smb2_nego_protocol[36], mpid.buffer, 4);
+    c = smb2_nego_protocol[3];
+    len = send(s, (char*)smb2_nego_protocol, c + 4, 0);
     len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
     return ret;
 }
