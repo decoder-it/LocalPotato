@@ -3,8 +3,7 @@
 #include "DCOMReflection.h"
 #include "PotatoTrigger.h"
 #include "SMBClient.h"
-#include <winternl.h>
-#include <Psapi.h>
+
 void usage();
 wchar_t* destfname=NULL;
 wchar_t* inputfname=NULL;
@@ -12,7 +11,7 @@ wchar_t* inputfname=NULL;
 
 int wmain(int argc, wchar_t** argv) 
 {
-	printf("\n\n\t LocalPotato\n");
+	printf("\n\n\t LocalPotato (aka CVE-2023-21746) \n");
 	printf("\t by splinter_code & decoder_it\n\n");
 	//{A9819296-E5B3-4E67-8226-5E72CE9E1FB7}
 	WCHAR defaultClsidStr[] = L"{854A20FB-2D44-457D-992F-EF13785D2B51}"; // Print Notify Service CLSID
