@@ -32,6 +32,8 @@ BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, Cr
 BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path);
 BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* fname);
 BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile, wchar_t* fname);
+BOOL SMB2CloseFileRequest(SOCKET s, char* recBuffer, int& MessageID);
+
 
 void SMBAuthenticatedFileWrite()
 {
@@ -53,6 +55,7 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     SMB2CreateFileRequest(s, recBuffer, MessageID, fname);
     if (!SMB2WriteRequest(s, recBuffer, MessageID, infile, fname))
         return FALSE;
+    SMB2CloseFileRequest(s, recBuffer, MessageID);
 
     myint mpid;
     usmb2_header s2h;
@@ -63,37 +66,10 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     memcpy(&sessid[0], &recBuffer[44], 8);
     mpid.i = GetCurrentProcessId();
 
-    
-
-   unsigned char close_file[] = \
-        "\x18\x00\x01\x00\x00\x00\x00\x00\x10\x00\x00\x00\x0a\x00\x00\x00" \
-        "\x09\x00\x00\x00\x0a\x00\x00\x00";
-    memset(netsess, 0, 4);
-    netsess[3] = 0x58; //length cablata si calcola facilmeente vedi sopra
-    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
-    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
-    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
-    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Command[0], "\x06\x00", 2);
-    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
-    memcpy(&s2h.smb2_header.Flags[0], "\x30\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
-    s2h.smb2_header.MessageID = MessageID++;// "\x09\x00\x00\x00\x00\x00\x00\x00", 8);
-    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
-    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
-    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
-    
     char InBuffer[1024];
-    char fileid[16];
-    memcpy(fileid, recBuffer + 132, 16);
 
-    memcpy(InBuffer, netsess + 1, 3);
-    memcpy(&InBuffer[3], s2h.buffer, sizeof(s2h.buffer));
-    memcpy(close_file + 8, fileid, 16);
-    len = send(s, (char*)InBuffer, sizeof(s2h.buffer) + 3, 0);
-    len = send(s, (char*)close_file, sizeof(close_file), 0);
+   
+
     unsigned char tree_disconnect[] = \
         "\x04\x00\x00";
     memset(netsess, 0, 4);
@@ -599,9 +575,8 @@ BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *f
     memcpy(finalPacket + 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer) + (wcslen(fname) * 2), extra_info, sizeof(extra_info));
     send(s, finalPacket, 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer) + (wcslen(fname) * 2) + sizeof(extra_info), 0);
     
-    // here we receive the return status of the Connect Tree from SMB
-    recv(s, recBuffer, DEFAULT_BUFLEN, 0);
     // here we receive the return status of the Create Request File from SMB
+    recv(s, recBuffer, DEFAULT_BUFLEN, 0);
     unsigned int* createFileStatus = (unsigned int*)(recBuffer + 12);
     if (*createFileStatus != 0) {
         printf("[!] SMB Create Request File failed with status code 0x%x\n", *createFileStatus);
@@ -695,5 +670,57 @@ BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile
     printf("[+] SMB Write Request file: %S success!\n", fname);
     free(chunk);
     free(finalPacket);
+    return ret;
+}
+
+BOOL SMB2CloseFileRequest(SOCKET s, char* recBuffer, int& MessageID) {
+    BOOL ret = TRUE;
+    myint mpid;
+    usmb2_header s2h;
+    unsigned char sessid[8];
+    char netsess[4];
+    char finalPacket[DEFAULT_BUFLEN];
+    char fileid[16];
+
+    unsigned char close_file[] = \
+        "\x18\x00\x01\x00\x00\x00\x00\x00\x10\x00\x00\x00\x0a\x00\x00\x00" \
+        "\x09\x00\x00\x00\x0a\x00\x00\x00";
+    
+    memcpy(&sessid[0], &recBuffer[44], 8);
+    mpid.i = GetCurrentProcessId();
+    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
+    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
+    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
+    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Command[0], "\x06\x00", 2);
+    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
+    memcpy(&s2h.smb2_header.Flags[0], "\x30\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
+    s2h.smb2_header.MessageID = MessageID++;
+    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
+    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
+    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+    memset(netsess, 0, 4);
+    netsess[3] = 0x58;
+    memcpy(fileid, recBuffer + 132, 16);
+    memcpy(close_file + 8, fileid, 16);
+    memcpy(finalPacket, netsess, 4);
+    memcpy(finalPacket + 4, s2h.buffer, sizeof(s2h.buffer));
+    memcpy(finalPacket + 4, s2h.buffer, sizeof(s2h.buffer));
+    memcpy(finalPacket + 4 + sizeof(s2h.buffer), close_file, sizeof(close_file));
+    send(s, finalPacket, 4 + sizeof(s2h.buffer)+sizeof(close_file), 0);
+    // here we receive the return status of the Close File Request from SMB
+    recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+    unsigned int* closeFileStatus = (unsigned int*)(recBuffer + 12);
+    if (*closeFileStatus != 0) {
+        printf("[!] SMB Close File Request failed with status code 0x%x\n", *closeFileStatus);
+        ret = FALSE;
+    }
+    else {
+        printf("[+] SMB Close File success!\n");
+    }
+
     return ret;
 }
