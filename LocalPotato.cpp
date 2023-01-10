@@ -79,8 +79,8 @@ void usage()
 	printf("\n");
 	printf("Mandatory Args: \n"
 		"-i Source file to copy\n"
-		"-d Destination file - do not specify the drive letter\n"
-		"Example: localpotato -i c:\\hacker\\evil.dll -d windows\\system32\\evil.dll\n\n"
+		"-o Output file - do not specify the drive letter\n"
+		"Example: localpotato -i c:\\hacker\\evil.dll -o windows\\system32\\evil.dll\n\n"
 	);
 	printf("Optional Args: \n"
 		"-c CLSID (Default {854A20FB-2D44-457D-992F-EF13785D2B51})\n"
