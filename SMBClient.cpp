@@ -31,6 +31,7 @@ BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int* outLen, C
 BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, CredHandle* hCred, struct _SecHandle* hcText);
 BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path);
 BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* fname);
+BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile, wchar_t* fname);
 
 void SMBAuthenticatedFileWrite()
 {
@@ -50,6 +51,8 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     SMB2DoAuthentication(s, recBuffer, MessageID);
     SMB2TreeConnect(s, recBuffer, MessageID, path);
     SMB2CreateFileRequest(s, recBuffer, MessageID, fname);
+    if (!SMB2WriteRequest(s, recBuffer, MessageID, infile, fname))
+        return FALSE;
 
     myint mpid;
     usmb2_header s2h;
@@ -61,92 +64,6 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     mpid.i = GetCurrentProcessId();
 
     
-
-    char fileid[16];
-    memcpy(fileid, recBuffer + 132, 16);
-    unsigned char write_data[] = \
-        "\x31\x00\x70\x00\x15\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x12\x00\x00\x00\x0a\x00\x00\x00\x05\x00\x00\x00\x0a\x00\x00\x00" \
-        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x57\x65\x20\x6c\x6f\x76\x65\x20\x70\x6f\x74\x61\x74\x6f\x65\x73" \
-        "\x21\x20\x20\x0d\x0a"
-        ;
-    
-    u_write_request write_req;
-    
-    FILE* fp;
-    char* chunk = (char *)malloc(CHUNK_SIZE);
-    size_t nread;
-    char cinfile[MAX_PATH];
-    wcstombs(cinfile,infile ,wcslen(infile));
-    fp = fopen(cinfile, "rb");
-    if (fp == NULL) {
-        printf("[!] Unable to open input file: %s\n", cinfile);
-        return FALSE;
-    }
-    
-
-    //memcpy(write_data + 16, fileid, 16);
-    //memset(netsess, 0, 4);
-
-    //netsess[3] = 0x85; //length cablata si calcola facilmeente vedi sopra
-    unsigned int* writeResponseStatus;
-    write_req.wr.FileOffset = 0;
-
-    memcpy(write_data + 16, fileid, 16);
-    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
-    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
-    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
-    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Command[0], "\x09\x00", 2);
-    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
-    memcpy(&s2h.smb2_header.Flags[0], "\x00\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
-    //s2h.smb2_header.MessageID = 8;
-    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
-    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
-    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
-    memset(&write_req, 0, sizeof(write_req));
-    memcpy(&write_req.wr.fileid[0], fileid, 16);
-    write_req.wr.FileOffset = 0L;
-    write_req.wr.StructureSize = 0x31;
-    write_req.wr.DataOffset = 0x70;
-    
-    myshort slen;
-    char InBuffer[1024];
-
-    while ((nread = fread(chunk, 1, CHUNK_SIZE, fp)) > 0) {
-        s2h.smb2_header.MessageID = MessageID++;// , "\x08\x00\x00\x00\x00\x00\x00\x00", 8);
-        slen.i =sizeof(s2h.buffer) + sizeof(write_req) + nread;
-        memset(netsess, 0, 4);
-        netsess[3] = slen.buffer[0];
-        netsess[2] = slen.buffer[1];
-        memset(InBuffer, 0, sizeof(InBuffer));
-        memcpy(&InBuffer[0], netsess, 4);
-        memcpy(&InBuffer[4], s2h.buffer, sizeof(s2h.buffer));
-        
-        write_req.wr.WriteLen = nread;
-        len = 4 + sizeof(s2h.buffer);
-        len = send(s, (char*)InBuffer, len, 0);
-        len = send(s, (char*)write_req.buffer, 48, 0);
-        len = send(s, (char*)chunk, nread, 0);
-        len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
-        
-        writeResponseStatus = (unsigned int*)(recBuffer + 12);
-        if (*writeResponseStatus != 0) {
-            printf("[!] SMB Write Request failed with status code 0x%x\n", *writeResponseStatus);
-           //disconnect_tree;
-           return FALSE;
-        }
-        write_req.wr.FileOffset = write_req.wr.FileOffset + nread;
-
-
-    }
-    free(chunk);
-  
-    printf("[+] SMB Write Request file: %S success!\n",fname);
 
    unsigned char close_file[] = \
         "\x18\x00\x01\x00\x00\x00\x00\x00\x10\x00\x00\x00\x0a\x00\x00\x00" \
@@ -167,6 +84,11 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
     memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
     memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+    
+    char InBuffer[1024];
+    char fileid[16];
+    memcpy(fileid, recBuffer + 132, 16);
+
     memcpy(InBuffer, netsess + 1, 3);
     memcpy(&InBuffer[3], s2h.buffer, sizeof(s2h.buffer));
     memcpy(close_file + 8, fileid, 16);
@@ -498,7 +420,7 @@ BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, Cr
     memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
     memcpy(&s2h.smb2_header.Flags[0], "\x10\x00\x00\x00", 4);
     memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
-    s2h.smb2_header.MessageID = MessageID++;// , "\x03\x00\x00\x00\x00\x00\x00\x00", 8);
+    s2h.smb2_header.MessageID = MessageID++;
     mpid.i = GetCurrentProcessId();
     memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
     memcpy(&s2h.smb2_header.TreeID[0], "\x00\x00\x00\x00", 4);
@@ -689,5 +611,89 @@ BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *f
         printf("[+] SMB Create Request File: %S success!\n", fname);
     }
 
+    return ret;
+}
+
+BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile, wchar_t *fname) {
+    BOOL ret = TRUE;
+    myint mpid;
+    myshort slen;
+    usmb2_header s2h;
+    unsigned char sessid[8];
+    char netsess[4];    
+    char fileid[16];
+    unsigned int* writeResponseStatus;
+    u_write_request write_req;
+    FILE* fp;
+    char* chunk = NULL;
+    char* finalPacket = NULL;
+    size_t nread;
+    char cinfile[MAX_PATH];
+
+    unsigned char write_data[] = \
+        "\x31\x00\x70\x00\x15\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
+        "\x12\x00\x00\x00\x0a\x00\x00\x00\x05\x00\x00\x00\x0a\x00\x00\x00" \
+        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
+        "\x57\x65\x20\x6c\x6f\x76\x65\x20\x70\x6f\x74\x61\x74\x6f\x65\x73" \
+        "\x21\x20\x20\x0d\x0a"
+        ;
+
+    memcpy(&sessid[0], &recBuffer[44], 8);
+    mpid.i = GetCurrentProcessId();
+    memset(cinfile, 0, sizeof(cinfile));
+    wcstombs(cinfile, infile, wcslen(infile));
+    fp = fopen(cinfile, "rb");
+    if (fp == NULL) {
+        printf("[!] Unable to open input file: %s\n", cinfile);
+        return FALSE;
+    }
+    write_req.wr.FileOffset = 0;
+    memcpy(fileid, recBuffer + 132, 16);
+    memcpy(write_data + 16, fileid, 16);
+    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
+    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
+    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
+    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Command[0], "\x09\x00", 2);
+    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
+    memcpy(&s2h.smb2_header.Flags[0], "\x00\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
+    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
+    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+    memset(&write_req, 0, sizeof(write_req));
+    memcpy(&write_req.wr.fileid[0], fileid, 16);
+    write_req.wr.FileOffset = 0L;
+    write_req.wr.StructureSize = 0x31;
+    write_req.wr.DataOffset = 0x70;
+    chunk = (char*)malloc(CHUNK_SIZE);
+    finalPacket = (char*)malloc(DEFAULT_BUFLEN * 16);
+    while ((nread = fread(chunk, 1, CHUNK_SIZE, fp)) > 0) {
+        write_req.wr.WriteLen = nread;
+        s2h.smb2_header.MessageID = MessageID++;
+        slen.i = sizeof(s2h.buffer) + sizeof(write_req) + nread;
+        memset(netsess, 0, 4);
+        netsess[3] = slen.buffer[0];
+        netsess[2] = slen.buffer[1];
+        memset(finalPacket, 0, DEFAULT_BUFLEN * 16);
+        memcpy(finalPacket, netsess, 4);
+        memcpy(finalPacket + 4, s2h.buffer, sizeof(s2h.buffer));
+        memcpy(finalPacket + 4 + sizeof(s2h.buffer), write_req.buffer, 48);
+        memcpy(finalPacket + 4 + sizeof(s2h.buffer) + 48, chunk, nread);
+        send(s, finalPacket, 4 + sizeof(s2h.buffer) + 48 + nread, 0);
+        // here we receive the return status of the Write Request from SMB
+        recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+        writeResponseStatus = (unsigned int*)(recBuffer + 12);
+        if (*writeResponseStatus != 0) {
+            printf("[!] SMB Write Request failed with status code 0x%x\n", *writeResponseStatus);
+            return FALSE;
+        }
+        write_req.wr.FileOffset = write_req.wr.FileOffset + nread;
+    }
+    printf("[+] SMB Write Request file: %S success!\n", fname);
+    free(chunk);
+    free(finalPacket);
     return ret;
 }
