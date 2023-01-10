@@ -30,6 +30,7 @@ BOOL SMB2DoAuthentication(SOCKET s, char* recBuffer, int& MessageID);
 BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int* outLen, CredHandle* hCred, struct _SecHandle* hcText);
 BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, CredHandle* hCred, struct _SecHandle* hcText);
 BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path);
+BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* fname);
 
 void SMBAuthenticatedFileWrite()
 {
@@ -48,7 +49,7 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     SMB2NegoProtocol(s, recBuffer);
     SMB2DoAuthentication(s, recBuffer, MessageID);
     SMB2TreeConnect(s, recBuffer, MessageID, path);
-
+    SMB2CreateFileRequest(s, recBuffer, MessageID, fname);
 
     myint mpid;
     usmb2_header s2h;
@@ -57,96 +58,9 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     char netsess[4];
 
     memcpy(&sessid[0], &recBuffer[44], 8);
-
-    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
-    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
-    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
-    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Command[0], "\x05\x00", 2);
-    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
-    memcpy(&s2h.smb2_header.Flags[0], "\x00\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
-    s2h.smb2_header.MessageID = MessageID++;// "\x06\x00\x00\x00\x00\x00\x00\x00", 8);
     mpid.i = GetCurrentProcessId();
-    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
-    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
-    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
 
-    unsigned char extra_info[] = \
-        "\x38\x00\x00\x00\x10\x00\x04\x00\x00\x00\x18\x00\x20\x00\x00\x00" \
-        "\x44\x48\x32\x51\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x00\x00\x00\x00\x00\x00\x00\x00\xc7\x03\x2b\xf3\x9a\x2a\xed\x11" \
-        "\x9b\xb5\x54\xbe\x34\x9b\x49\x02\x18\x00\x00\x00\x10\x00\x04\x00" \
-        "\x00\x00\x18\x00\x00\x00\x00\x00\x4d\x78\x41\x63\x00\x00\x00\x00" \
-        "\x18\x00\x00\x00\x10\x00\x04\x00\x00\x00\x18\x00\x00\x00\x00\x00" \
-        "\x51\x46\x69\x64\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x04\x00" \
-        "\x00\x00\x18\x00\x34\x00\x00\x00\x52\x71\x4c\x73\x00\x00\x00\x00" \
-        "\x1a\x7e\x33\xfa\xe5\x99\x6b\xe2\x26\xdc\x50\xcd\x83\x2e\x1c\x04" \
-        "\x07\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x3f\x5b\x29\x5c\x98\x85\x50\x7e\x99\x16\xb0\x10\x6e\x8f\x13\xc2" \
-        "\x00\x00\x00";
-
-    u_create_request create_req;
-    memset(&create_req, 0, sizeof(create_req));
-    create_req.cr.StructuredSize = 0x39;
-    create_req.cr.SecurityFlags = '\x00';
-    create_req.cr.RequestedOplockLevel = '\xff';
-    create_req.cr.ImpersonationLevel = 2;
-    memcpy(&create_req.cr.SmbCreateFlags[0], "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
-    memcpy(&create_req.cr.Reserved[0], "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
-    memcpy(&create_req.cr.DesiredAccess[0], "\x96\x01\x12\x00", 4);
-    memcpy(&create_req.cr.FileAttribute[0], "\x80\x00\x00\x00", 4);
-    memcpy(&create_req.cr.ShareAccess[0], "\x01\x00\x00\x00", 4);
-    memcpy(&create_req.cr.CreateDisposition[0], "\x05\x00\x00\x00", 4);
-    memcpy(&create_req.cr.CreateOptions[0], "\x60\x00\x00\x00", 4);
-    create_req.cr.NameOffset = 0x78;
-    create_req.cr.NameLength = wcslen(fname) * 2;
-    create_req.cr.CreateContextsOffset = 0;// create_req.cr.NameOffset + wcslen(fname) * 2;
-    create_req.cr.CreateContextsLength = 0;// sizeof(extra_info);
-    myshort us;
-    memset(netsess, 0, 4);
-    us.i = sizeof(create_req) + sizeof(s2h) + (wcslen(fname) * 2) + sizeof(extra_info);
-    netsess[2] = us.buffer[1];//length cablata si calcola facilmeente vedi sopra
-    netsess[3] = us.buffer[0];//length cablata si calcola facilmeente vedi sopra
-
-    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
-    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
-    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
-    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Command[0], "\x05\x00", 2);
-    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
-    memcpy(&s2h.smb2_header.Flags[0], "\x00\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
-    s2h.smb2_header.MessageID = MessageID++;// , "\x06\x00\x00\x00\x00\x00\x00\x00", 8);
-    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
-    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
-    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
-    char InBuffer[1024];
-    memcpy(InBuffer, netsess, 4);
-    memcpy(&InBuffer[4], s2h.buffer, sizeof(s2h.buffer));
-
-    len = send(s, (char*)InBuffer, sizeof(s2h.buffer) + 4, 0);
-
-    len = send(s, (char*)create_req.buffer, sizeof(create_req.buffer), 0);
     
-    len = send(s, (char*)fname, wcslen(fname) * 2, 0);
-    len = send(s, (char*)extra_info, sizeof(extra_info), 0);
-    // here we receive the return status of the Connect Tree from SMB
-    len = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
-    
-    // here we receive the return status of the Create Request File from SMB
-    unsigned int* createFileStatus = (unsigned int*)(recBuffer + 12);
-    if (*createFileStatus != 0) {
-        printf("[!] SMB Create Request File failed with status code 0x%x\n", *createFileStatus);
-        return FALSE;
-    }
-    else {
-        printf("[+] SMB Create Request File: %S success!\n",fname);
-    }
 
     char fileid[16];
     memcpy(fileid, recBuffer + 132, 16);
@@ -201,6 +115,7 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     write_req.wr.DataOffset = 0x70;
     
     myshort slen;
+    char InBuffer[1024];
 
     while ((nread = fread(chunk, 1, CHUNK_SIZE, fp)) > 0) {
         s2h.smb2_header.MessageID = MessageID++;// , "\x08\x00\x00\x00\x00\x00\x00\x00", 8);
@@ -628,6 +543,7 @@ BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, Cr
 }
 
 BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path){
+    BOOL ret = TRUE;
     myint mpid;
     usmb2_header s2h;
     u_tree_connect_request_header trh;
@@ -670,10 +586,108 @@ BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path){
     unsigned int* connectTreeStatus = (unsigned int*)(recBuffer + 12);
     if (*connectTreeStatus != 0) {
         printf("[!] SMB Connect Tree: %S failed with status code 0x%x\n", path, *connectTreeStatus);
-        return FALSE;
+        ret = FALSE;
     }
     else {
         printf("[+] SMB Connect Tree: %S  success!\n", path);
     }
+    return ret;
+}
 
+BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *fname){
+    BOOL ret = TRUE;
+    myint mpid;
+    myshort us;
+    usmb2_header s2h;
+    unsigned char sessid[8];
+    char netsess[4];
+    u_create_request create_req;
+    char finalPacket[DEFAULT_BUFLEN];
+
+    unsigned char extra_info[] = \
+        "\x38\x00\x00\x00\x10\x00\x04\x00\x00\x00\x18\x00\x20\x00\x00\x00" \
+        "\x44\x48\x32\x51\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
+        "\x00\x00\x00\x00\x00\x00\x00\x00\xc7\x03\x2b\xf3\x9a\x2a\xed\x11" \
+        "\x9b\xb5\x54\xbe\x34\x9b\x49\x02\x18\x00\x00\x00\x10\x00\x04\x00" \
+        "\x00\x00\x18\x00\x00\x00\x00\x00\x4d\x78\x41\x63\x00\x00\x00\x00" \
+        "\x18\x00\x00\x00\x10\x00\x04\x00\x00\x00\x18\x00\x00\x00\x00\x00" \
+        "\x51\x46\x69\x64\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x04\x00" \
+        "\x00\x00\x18\x00\x34\x00\x00\x00\x52\x71\x4c\x73\x00\x00\x00\x00" \
+        "\x1a\x7e\x33\xfa\xe5\x99\x6b\xe2\x26\xdc\x50\xcd\x83\x2e\x1c\x04" \
+        "\x07\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
+        "\x3f\x5b\x29\x5c\x98\x85\x50\x7e\x99\x16\xb0\x10\x6e\x8f\x13\xc2" \
+        "\x00\x00\x00";
+
+    memcpy(&sessid[0], &recBuffer[44], 8);
+    mpid.i = GetCurrentProcessId();
+    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
+    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
+    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
+    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Command[0], "\x05\x00", 2);
+    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
+    memcpy(&s2h.smb2_header.Flags[0], "\x00\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
+    s2h.smb2_header.MessageID = MessageID++;
+    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
+    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
+    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+    memset(&create_req, 0, sizeof(create_req));
+    create_req.cr.StructuredSize = 0x39;
+    create_req.cr.SecurityFlags = '\x00';
+    create_req.cr.RequestedOplockLevel = '\xff';
+    create_req.cr.ImpersonationLevel = 2;
+    memcpy(&create_req.cr.SmbCreateFlags[0], "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
+    memcpy(&create_req.cr.Reserved[0], "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
+    memcpy(&create_req.cr.DesiredAccess[0], "\x96\x01\x12\x00", 4);
+    memcpy(&create_req.cr.FileAttribute[0], "\x80\x00\x00\x00", 4);
+    memcpy(&create_req.cr.ShareAccess[0], "\x01\x00\x00\x00", 4);
+    memcpy(&create_req.cr.CreateDisposition[0], "\x05\x00\x00\x00", 4);
+    memcpy(&create_req.cr.CreateOptions[0], "\x60\x00\x00\x00", 4);
+    create_req.cr.NameOffset = 0x78;
+    create_req.cr.NameLength = wcslen(fname) * 2;
+    create_req.cr.CreateContextsOffset = 0;
+    create_req.cr.CreateContextsLength = 0;
+    memset(netsess, 0, 4);
+    us.i = sizeof(create_req) + sizeof(s2h) + (wcslen(fname) * 2) + sizeof(extra_info);
+    netsess[2] = us.buffer[1];
+    netsess[3] = us.buffer[0];
+    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
+    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
+    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
+    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Command[0], "\x05\x00", 2);
+    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
+    memcpy(&s2h.smb2_header.Flags[0], "\x00\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
+    s2h.smb2_header.MessageID = MessageID++;
+    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
+    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
+    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+
+    // send the final packet
+    memcpy(finalPacket, netsess, 4);
+    memcpy(finalPacket + 4, s2h.buffer, sizeof(s2h.buffer));
+    memcpy(finalPacket + 4 + sizeof(s2h.buffer), create_req.buffer, sizeof(create_req.buffer));
+    memcpy(finalPacket + 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer), fname, wcslen(fname) * 2);
+    memcpy(finalPacket + 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer) + (wcslen(fname) * 2), extra_info, sizeof(extra_info));
+    send(s, finalPacket, 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer) + (wcslen(fname) * 2) + sizeof(extra_info), 0);
+    
+    // here we receive the return status of the Connect Tree from SMB
+    recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+    // here we receive the return status of the Create Request File from SMB
+    unsigned int* createFileStatus = (unsigned int*)(recBuffer + 12);
+    if (*createFileStatus != 0) {
+        printf("[!] SMB Create Request File failed with status code 0x%x\n", *createFileStatus);
+        ret = FALSE;
+    }
+    else {
+        printf("[+] SMB Create Request File: %S success!\n", fname);
+    }
+
+    return ret;
 }
