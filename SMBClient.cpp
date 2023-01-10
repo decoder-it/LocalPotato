@@ -51,7 +51,8 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     SMBNegoProtocol(s, recBuffer);
     SMB2NegoProtocol(s, recBuffer);
     SMB2DoAuthentication(s, recBuffer, MessageID);
-    SMB2TreeConnect(s, recBuffer, MessageID, path);
+    if(!SMB2TreeConnect(s, recBuffer, MessageID, path))
+        return ret;
     SMB2CreateFileRequest(s, recBuffer, MessageID, fname);
     if (!SMB2WriteRequest(s, recBuffer, MessageID, infile, fname))
         return ret;
