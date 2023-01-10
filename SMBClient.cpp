@@ -33,7 +33,7 @@ BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path);
 BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* fname);
 BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile, wchar_t* fname);
 BOOL SMB2CloseFileRequest(SOCKET s, char* recBuffer, int& MessageID);
-
+BOOL SMB2TreeDisconnect(SOCKET s, char* recBuffer, int& MessageID);
 
 void SMBAuthenticatedFileWrite()
 {
@@ -45,55 +45,19 @@ void SMBAuthenticatedFileWrite()
 
 BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_t *infile)
 {
+    BOOL ret = FALSE;
     int MessageID = 2;
     char recBuffer[DEFAULT_BUFLEN];
-
     SMBNegoProtocol(s, recBuffer);
     SMB2NegoProtocol(s, recBuffer);
     SMB2DoAuthentication(s, recBuffer, MessageID);
     SMB2TreeConnect(s, recBuffer, MessageID, path);
     SMB2CreateFileRequest(s, recBuffer, MessageID, fname);
     if (!SMB2WriteRequest(s, recBuffer, MessageID, infile, fname))
-        return FALSE;
+        return ret;
     SMB2CloseFileRequest(s, recBuffer, MessageID);
-
-    myint mpid;
-    usmb2_header s2h;
-    int len = 0;
-    unsigned char sessid[8];
-    char netsess[4];
-
-    memcpy(&sessid[0], &recBuffer[44], 8);
-    mpid.i = GetCurrentProcessId();
-
-    char InBuffer[1024];
-
-   
-
-    unsigned char tree_disconnect[] = \
-        "\x04\x00\x00";
-    memset(netsess, 0, 4);
-    netsess[3] = 0x44; //length cablata si calcola facilmeente vedi sopra
-    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
-    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
-    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
-    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
-    memcpy(&s2h.smb2_header.Command[0], "\x04\x00", 2);
-    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
-    memcpy(&s2h.smb2_header.Flags[0], "\x30\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
-    s2h.smb2_header.MessageID = MessageID++;// , "\x10\x00\x00\x00\x00\x00\x00\x00", 8);
-    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
-    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
-    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
-    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
-    memcpy(InBuffer, netsess + 1, 3);
-    memcpy(&InBuffer[3], s2h.buffer, sizeof(s2h.buffer));
-    len = send(s, (char*)InBuffer, sizeof(s2h.buffer) + 3, 0);
-    len = send(s, (char*)tree_disconnect, sizeof(tree_disconnect), 0);
-
-    return(TRUE);
+    ret = SMB2TreeDisconnect(s, recBuffer, MessageID);
+    return ret;
 }
 
 BOOL GenClientContext(BYTE* pIn, DWORD cbIn, BYTE* pOut, DWORD* pcbOut, BOOL* pfDone, WCHAR* pszTarget, CredHandle* hCred, struct _SecHandle* hcText)
@@ -708,7 +672,6 @@ BOOL SMB2CloseFileRequest(SOCKET s, char* recBuffer, int& MessageID) {
     memcpy(close_file + 8, fileid, 16);
     memcpy(finalPacket, netsess, 4);
     memcpy(finalPacket + 4, s2h.buffer, sizeof(s2h.buffer));
-    memcpy(finalPacket + 4, s2h.buffer, sizeof(s2h.buffer));
     memcpy(finalPacket + 4 + sizeof(s2h.buffer), close_file, sizeof(close_file));
     send(s, finalPacket, 4 + sizeof(s2h.buffer)+sizeof(close_file), 0);
     // here we receive the return status of the Close File Request from SMB
@@ -721,6 +684,51 @@ BOOL SMB2CloseFileRequest(SOCKET s, char* recBuffer, int& MessageID) {
     else {
         printf("[+] SMB Close File success!\n");
     }
+    return ret;
+}
 
+BOOL SMB2TreeDisconnect(SOCKET s, char* recBuffer, int& MessageID) {
+    BOOL ret = TRUE;
+    myint mpid;
+    usmb2_header s2h;
+    unsigned char sessid[8];
+    char netsess[4];
+    char finalPacket[DEFAULT_BUFLEN];
+
+    unsigned char tree_disconnect[] = "\x04\x00\x00\x00";
+
+    memcpy(&sessid[0], &recBuffer[44], 8);
+    mpid.i = GetCurrentProcessId();
+    memset(netsess, 0, 4);
+    netsess[3] = 0x44;
+    memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
+    memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
+    memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);
+    memcpy(&s2h.smb2_header.ChannelSequence[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Reserved[0], "\x00\x00", 2);
+    memcpy(&s2h.smb2_header.Command[0], "\x04\x00", 2);
+    memcpy(&s2h.smb2_header.CreditRequest[0], "\x1f\x00", 2);
+    memcpy(&s2h.smb2_header.Flags[0], "\x30\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.NextCommand[0], "\x00\x00\x00\x00", 4);
+    s2h.smb2_header.MessageID = MessageID++;// , "\x10\x00\x00\x00\x00\x00\x00\x00", 8);
+    memcpy(&s2h.smb2_header.ProcessID[0], mpid.buffer, 4);
+    memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
+    memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
+    memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+    
+    memcpy(finalPacket, netsess+1, 3);
+    memcpy(finalPacket + 3, s2h.buffer, sizeof(s2h.buffer));
+    memcpy(finalPacket + 3 + sizeof(s2h.buffer), tree_disconnect, sizeof(tree_disconnect));
+    send(s, finalPacket, 3 + sizeof(s2h.buffer) + sizeof(tree_disconnect), 0);
+    // here we receive the return status of the Close File Request from SMB
+    recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+    unsigned int* treeDisconnectStatus = (unsigned int*)(recBuffer + 12);
+    if (*treeDisconnectStatus != 0) {
+        printf("[!] SMB Tree Disconnect failed with status code 0x%x\n", *treeDisconnectStatus);
+        ret = FALSE;
+    }
+    else {
+        printf("[+] SMB Tree Disconnect!\n");
+    }
     return ret;
 }
