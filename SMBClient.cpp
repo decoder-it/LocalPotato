@@ -452,7 +452,7 @@ BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path){
         ret = FALSE;
     }
     else {
-        printf("[+] SMB Connect Tree: %S  success!\n", path);
+        printf("[+] SMB Connect Tree: %S  success\n", path);
     }
     return ret;
 }
@@ -548,7 +548,7 @@ BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *f
         ret = FALSE;
     }
     else {
-        printf("[+] SMB Create Request File: %S success!\n", fname);
+        printf("[+] SMB Create Request File: %S success\n", fname);
     }
 
     return ret;
@@ -632,7 +632,7 @@ BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile
         }
         write_req.wr.FileOffset = write_req.wr.FileOffset + nread;
     }
-    printf("[+] SMB Write Request file: %S success!\n", fname);
+    printf("[+] SMB Write Request file: %S success\n", fname);
     free(chunk);
     free(finalPacket);
     return ret;
@@ -683,7 +683,7 @@ BOOL SMB2CloseFileRequest(SOCKET s, char* recBuffer, int& MessageID) {
         ret = FALSE;
     }
     else {
-        printf("[+] SMB Close File success!\n");
+        printf("[+] SMB Close File success\n");
     }
     return ret;
 }
@@ -729,7 +729,7 @@ BOOL SMB2TreeDisconnect(SOCKET s, char* recBuffer, int& MessageID) {
         ret = FALSE;
     }
     else {
-        printf("[+] SMB Tree Disconnect!\n");
+        printf("[+] SMB Tree Disconnect success\n");
     }
     return ret;
 }
