@@ -466,7 +466,7 @@ BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *f
     char netsess[4];
     u_create_request create_req;
     char finalPacket[DEFAULT_BUFLEN];
-
+    /*
     unsigned char extra_info[] = \
         "\x38\x00\x00\x00\x10\x00\x04\x00\x00\x00\x18\x00\x20\x00\x00\x00" \
         "\x44\x48\x32\x51\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
@@ -480,7 +480,7 @@ BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *f
         "\x07\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
         "\x3f\x5b\x29\x5c\x98\x85\x50\x7e\x99\x16\xb0\x10\x6e\x8f\x13\xc2" \
         "\x00\x00\x00";
-
+        */
     memcpy(&sessid[0], &recBuffer[44], 8);
     mpid.i = GetCurrentProcessId();
     memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
@@ -514,7 +514,7 @@ BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *f
     create_req.cr.CreateContextsOffset = 0;
     create_req.cr.CreateContextsLength = 0;
     memset(netsess, 0, 4);
-    us.i = sizeof(create_req) + sizeof(s2h) + (wcslen(fname) * 2) + sizeof(extra_info);
+    us.i = sizeof(create_req) + sizeof(s2h) + (wcslen(fname) * 2);// +sizeof(extra_info);
     netsess[2] = us.buffer[1];
     netsess[3] = us.buffer[0];
     memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
@@ -537,9 +537,10 @@ BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *f
     memcpy(finalPacket + 4, s2h.buffer, sizeof(s2h.buffer));
     memcpy(finalPacket + 4 + sizeof(s2h.buffer), create_req.buffer, sizeof(create_req.buffer));
     memcpy(finalPacket + 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer), fname, wcslen(fname) * 2);
-    memcpy(finalPacket + 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer) + (wcslen(fname) * 2), extra_info, sizeof(extra_info));
-    send(s, finalPacket, 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer) + (wcslen(fname) * 2) + sizeof(extra_info), 0);
-    
+    //memcpy(finalPacket + 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer) + (wcslen(fname) * 2), extra_info, sizeof(extra_info));
+//    send(s, finalPacket, 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer) + (wcslen(fname) * 2) + sizeof(extra_info), 0);
+    send(s, finalPacket, 4 + sizeof(s2h.buffer) + sizeof(create_req.buffer) + (wcslen(fname) * 2), 0);
+
     // here we receive the return status of the Create Request File from SMB
     recv(s, recBuffer, DEFAULT_BUFLEN, 0);
     unsigned int* createFileStatus = (unsigned int*)(recBuffer + 12);
@@ -570,14 +571,7 @@ BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile
     size_t nread;
     char cinfile[MAX_PATH];
 
-    unsigned char write_data[] = \
-        "\x31\x00\x70\x00\x15\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x12\x00\x00\x00\x0a\x00\x00\x00\x05\x00\x00\x00\x0a\x00\x00\x00" \
-        "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-        "\x57\x65\x20\x6c\x6f\x76\x65\x20\x70\x6f\x74\x61\x74\x6f\x65\x73" \
-        "\x21\x20\x20\x0d\x0a"
-        ;
-
+   
     memcpy(&sessid[0], &recBuffer[44], 8);
     mpid.i = GetCurrentProcessId();
     memset(cinfile, 0, sizeof(cinfile));
@@ -589,7 +583,7 @@ BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile
     }
     write_req.wr.FileOffset = 0;
     memcpy(fileid, recBuffer + 132, 16);
-    memcpy(write_data + 16, fileid, 16);
+    
     memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
     memcpy(&s2h.smb2_header.CreditCharge, "\01\00", 2);
     memcpy(&s2h.smb2_header.StructureSize, "\x40\x00", 2);

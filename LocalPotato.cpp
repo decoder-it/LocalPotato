@@ -59,7 +59,7 @@ int wmain(int argc, wchar_t** argv)
 		++cnt;
 		--argc;
 	}
-	if (destfname == NULL || inputfname == NULL)
+	if (destfname == NULL || inputfname == NULL || destfname[1]==':')
 	{
 		usage();
 		return 1;

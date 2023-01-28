@@ -5,7 +5,7 @@
 
 #define SEC_SUCCESS(Status) ((Status) >= 0)
 #define DEFAULT_BUFLEN 8192
-#define MessageAttribute ISC_REQ_NO_INTEGRITY 
+#define MessageAttribute ISC_REQ_INTEGRITY //| ISC_REQ_UNVERIFIED_TARGET_NAME
 #define TargetNameSpn L"cifs/127.0.0.1"
 
 typedef union usmb2_header {
