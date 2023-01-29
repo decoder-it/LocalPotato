@@ -5,7 +5,7 @@
 
 #define SEC_SUCCESS(Status) ((Status) >= 0)
 #define DEFAULT_BUFLEN 8192
-#define MessageAttribute ISC_REQ_INTEGRITY //| ISC_REQ_UNVERIFIED_TARGET_NAME
+#define MessageAttribute ISC_REQ_INTEGRITY
 #define TargetNameSpn L"cifs/127.0.0.1"
 
 typedef union usmb2_header {
@@ -30,7 +30,6 @@ typedef union usmb2_header {
 };
 
 typedef union usmb2_data {
-
     struct {
         BYTE StructureSize[2];
         BYTE Flags[1];
@@ -44,65 +43,22 @@ typedef union usmb2_data {
     BYTE buffer[24];
 };
 
-typedef union usmb2_writedata {
-
-    struct {
-        BYTE StructureSize[2];
-        short DataOffeset;
-        int WriteLength;
-        long long FileOffset;
-   
-        BYTE Guid[16];
-        int Channel;
-        int RemainingBytes;
-        int WriteFlags;
-        int BlobOffset;
-        short BlobLength;
-        
-    } smb2_writedata;
-    BYTE buffer[sizeof(smb2_writedata)];
-};
-
 union myint {
     unsigned int i;
     char buffer[4];
 };
+
 union myshort {
     unsigned short int i;
     char buffer[2];
 };
-union mydw {
-    DWORD i;
-    char buffer[8];
-};
-typedef struct {
-    char word_count;
-    short byte_count;
-    char buffer_format;
-    char domain_name[2];
-    char server_name[2];
-    char username[2];
-    char workstation[2];
-    char password[2];
-} session_setup_request;
-
-typedef struct {
-    char word_count;
-    short action;
-    short byte_count;
-    char native_os[2];
-    char native_lan_man[2];
-    char primary_domain[2];
-} session_setup_response;
 
 typedef struct {
     short structured_size;;
     short flags;
     short path_offset;
     short path_len;
-
 } tree_connect_request_header;
-
 
 typedef union {
     tree_connect_request_header trh;
@@ -125,33 +81,15 @@ typedef struct {
     short NameLength;
     int CreateContextsOffset;
     int CreateContextsLength;
-
-
 } create_request;
-
-typedef struct {
-    char protocol_id[4];
-    char command;
-    short status;
-    char flags;
-    short flags2;
-    short pid_high;
-    char signature[8];
-    short reserved;
-    short tid;
-    short pid;
-    short uid;
-    short mid;
-} smb_header;
-
 
 typedef union
 {
     create_request cr;
     char buffer[sizeof(cr)];
-}u_create_request;
-typedef struct {
+} u_create_request;
 
+typedef struct {
     short StructureSize;
     short DataOffset;
     int WriteLen;
@@ -159,8 +97,8 @@ typedef struct {
     char fileid[16];
     int RemainingBytes;
     char filler[8];
-
 } write_request;
+
 typedef union {
     write_request wr;
     char buffer[sizeof(wr)];

