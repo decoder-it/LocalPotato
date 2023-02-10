@@ -3,7 +3,9 @@ Another Local Windows privilege escalation using a new potato technique ;)
 
 The LocalPotato attack is a type of NTLM reflection attack that targets local authentication. This attack allows for arbitrary file read/write and elevation of privilege. 
 
-More technical details at --> https://www.localpotato.com
+**NOTE: This vulnerability has been fixed by Microsoft in the January 2023 Patch Tuesday with the [CVE-2023-21746](https://msrc.microsoft.com/update-guide/en-US/vulnerability/CVE-2023-21746). If you run this exploit against a patched machine it won't work.** 
+
+More technical details at --> https://www.localpotato.com/localpotato_html/LocalPotato.html
 
 ## Usage
 
