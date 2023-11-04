@@ -8,6 +8,7 @@ The LocalPotato attack is a type of NTLM reflection attack that targets local au
 More technical details at --> https://www.localpotato.com/localpotato_html/LocalPotato.html
 
 **NOTE2: The HTTP/WebDAV scenario is currently unpatched (Microsoft decision, we reported it) and works on updated systems.** 
+
 More technical details at --> https://decoder.cloud/2023/11/03/localpotato-http-edition/
 
 
