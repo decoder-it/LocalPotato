@@ -5,10 +5,11 @@ The LocalPotato attack is a type of NTLM reflection attack that targets local au
 
 **NOTE: The SMB scenario has been fixed by Microsoft in the January 2023 Patch Tuesday with the [CVE-2023-21746](https://msrc.microsoft.com/update-guide/en-US/vulnerability/CVE-2023-21746). If you run this exploit against a patched machine it won't work.** 
 
-**NOTE2: The HTTP/WebDAV scenario is currently unpatched (Microsoft decision, we reported it) and works on updated systems.** 
-
-
 More technical details at --> https://www.localpotato.com/localpotato_html/LocalPotato.html
+**NOTE2: The HTTP/WebDAV scenario is currently unpatched (Microsoft decision, we reported it) and works on updated systems.** 
+More technical details at --> https://decoder.cloud/2023/11/03/localpotato-http-edition/
+
+
 
 ## Usage
 
